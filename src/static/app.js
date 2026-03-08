@@ -10,8 +10,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch("/activities");
       const activities = await response.json();
 
-      // Clear loading message
+      // Clear loading message and dropdown
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -20,12 +21,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft = details.max_participants - details.participants.length;
 
+        // build participants list HTML (or placeholder if empty)
+        let participantsHtml = '<p><em>No one has signed up yet.</em></p>';
+        if (details.participants.length) {
+          const listItems = details.participants.map(email => `
+            <li data-email="${email}">
+              ${email} <span class="remove-btn" title="Remove">&times;</span>
+            </li>
+          `).join('');
+          participantsHtml = `
+            <p><strong>Participants:</strong></p>
+            <ul class="participants-list">
+              ${listItems}
+            </ul>
+          `;
+        }
+
         activityCard.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          ${participantsHtml}
         `;
+
+        // attach remove handlers
+        activityCard.querySelectorAll('.remove-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const email = e.target.closest('li').dataset.email;
+            try {
+              const resp = await fetch(
+                `/activities/${encodeURIComponent(name)}/participants?email=${encodeURIComponent(email)}`,
+                { method: 'DELETE' }
+              );
+              if (resp.ok) {
+                // refresh list
+                fetchActivities();
+              } else {
+                const err = await resp.json();
+                console.error('Remove failed:', err);
+              }
+            } catch (err) {
+              console.error('Error removing participant:', err);
+            }
+          });
+        });
 
         activitiesList.appendChild(activityCard);
 
@@ -62,6 +102,9 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+
+        // refresh activities display so new participant appears immediately
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
